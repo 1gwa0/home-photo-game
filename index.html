@@ -1,118 +1,122 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>拍出家的味道</title>
+  <title>拍照塔式模板</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; overflow: hidden; background: #000; }
-    #container {
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+    }
+    #cameraContainer {
       position: relative;
-      width: 100%;
-      max-width: 1152px;
-      margin: 0 auto;
+      width: 100vw;
       height: 100vh;
     }
-    video, canvas, img.template {
+    video, canvas, img.overlay {
       position: absolute;
-      top: 0; left: 0;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
     }
-    .capture-button {
-      position: fixed;
+    #captureBtn {
+      position: absolute;
       bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      padding: 12px 24px;
-      background: #fff;
-      border: none;
-      border-radius: 8px;
+      padding: 10px 20px;
       font-size: 18px;
-      z-index: 10;
+      background: white;
+      border: none;
+      border-radius: 10px;
       cursor: pointer;
     }
-    #downloadLink {
-      position: fixed;
+    #downloadBtn {
+      position: absolute;
       top: 20px;
       right: 20px;
-      background: #fff;
-      padding: 10px 14px;
-      border-radius: 6px;
-      text-decoration: none;
+      padding: 10px;
+      background: blue;
+      color: white;
       display: none;
-      z-index: 10;
     }
   </style>
 </head>
 <body>
-  <div id="container">
+  <div id="cameraContainer">
     <video id="video" autoplay playsinline></video>
-    <canvas id="canvas"></canvas>
-    <img class="template" src="template.png" alt="template" />
-    <button class="capture-button" onclick="capturePhoto()">拍照</button>
-    <a id="downloadLink" download="home-photo.png">下載照片</a>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <img src="template.png" class="overlay" />
+    <button id="captureBtn">拍照</button>
+    <a id="downloadBtn" download="result.png">下載照片</a>
   </div>
 
   <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const downloadLink = document.getElementById('downloadLink');
+    const captureBtn = document.getElementById('captureBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
 
-    const holes = [
-      { x: 96,  y: 235,  width: 384, height: 384 },
-      { x: 640, y: 235,  width: 384, height: 384 },
-      { x: 96,  y: 1130, width: 384, height: 384 },
-      { x: 640, y: 1130, width: 384, height: 384 },
-    ];
+    let images = [];
 
-    let shots = [];
-
-    async function startCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { exact: "environment" } },
-        audio: false
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        video.srcObject = stream;
       });
-      video.srcObject = stream;
 
-      video.addEventListener('loadedmetadata', () => {
-        canvas.width = 1152;
-        canvas.height = 2047;
-      });
-    }
+    captureBtn.addEventListener('click', () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      images.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
 
-    async function capturePhoto() {
-      if (shots.length >= 4) return;
-      const hole = holes[shots.length];
+      if (images.length === 4) {
+        mergePhotos();
+      }
+    });
 
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = hole.width;
-      tempCanvas.height = hole.height;
-      tempCanvas.getContext('2d').drawImage(video, 0, 0, hole.width, hole.height);
-      shots.push(tempCanvas);
+    function mergePhotos() {
+      const outputCanvas = document.createElement('canvas');
+      const outputCtx = outputCanvas.getContext('2d');
+      outputCanvas.width = canvas.width;
+      outputCanvas.height = canvas.height;
 
-      drawToCanvas();
+      // draw all 4 images (manual overlay needed)
+      for (let i = 0; i < 4; i++) {
+        const pos = getHolePosition(i, outputCanvas);
+        outputCtx.putImageData(images[i], pos.x, pos.y);
+      }
 
-      if (shots.length === 4) {
-        setTimeout(() => {
-          downloadLink.style.display = 'block';
-          downloadLink.href = canvas.toDataURL();
-        }, 300);
+      const overlay = new Image();
+      overlay.src = 'template.png';
+      overlay.onload = () => {
+        outputCtx.drawImage(overlay, 0, 0, outputCanvas.width, outputCanvas.height);
+        downloadBtn.href = outputCanvas.toDataURL('image/png');
+        downloadBtn.style.display = 'block';
       }
     }
 
-    function drawToCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      shots.forEach((shotCanvas, i) => {
-        const { x, y } = holes[i];
-        ctx.drawImage(shotCanvas, x, y);
-      });
-    }
+    function getHolePosition(index, canvas) {
+      // You can modify these coordinates based on actual hole positions
+      const w = canvas.width;
+      const h = canvas.height;
+      const margin = 40;
+      const sizeW = w / 2 - margin;
+      const sizeH = h / 2 - margin;
 
-    startCamera();
+      switch (index) {
+        case 0: return { x: 0, y: 0 };
+        case 1: return { x: sizeW + margin, y: 0 };
+        case 2: return { x: 0, y: sizeH + margin };
+        case 3: return { x: sizeW + margin, y: sizeH + margin };
+      }
+    }
   </script>
 </body>
 </html>
