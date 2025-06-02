@@ -1,41 +1,37 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>拍四張相片合成模板</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>拍照合成遊戲</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
-      background: black;
-      font-family: sans-serif;
       width: 100%;
       height: 100%;
       overflow: hidden;
+      background: black;
     }
     #container {
       position: relative;
-      width: 100vw;
-      height: 100vh;
-      max-width: 1080px;
-      max-height: 1920px;
+      width: 1080px;
+      height: 1920px;
       margin: 0 auto;
       background: black;
     }
-    #video {
+    video {
       position: absolute;
       width: 100%;
       height: 100%;
       object-fit: cover;
       z-index: 1;
     }
-    .photo-slot {
+    #photo-layer img {
       position: absolute;
       width: 74%;
       height: 18%;
       left: 13%;
-      background: transparent;
       object-fit: cover;
       z-index: 2;
     }
@@ -46,26 +42,28 @@
 
     #template {
       position: absolute;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
       z-index: 3;
+      object-fit: cover;
     }
-
     #controls {
       position: absolute;
-      bottom: 20px;
+      bottom: 40px;
       width: 100%;
-      text-align: center;
       z-index: 4;
+      display: flex;
+      justify-content: center;
+      gap: 20px;
     }
     button {
-      font-size: 1.4rem;
-      padding: 12px 24px;
-      margin: 0 10px;
-      background-color: #fff;
+      font-size: 1.2rem;
+      padding: 10px 20px;
       border: none;
-      border-radius: 10px;
+      border-radius: 8px;
+      background: white;
       cursor: pointer;
     }
   </style>
@@ -73,19 +71,19 @@
 <body>
   <div id="container">
     <video id="video" autoplay playsinline muted></video>
-    <img id="slot0" class="photo-slot" />
-    <img id="slot1" class="photo-slot" />
-    <img id="slot2" class="photo-slot" />
-    <img id="slot3" class="photo-slot" />
-    <img id="template" src="template.png" alt="Template Overlay" />
+    <div id="photo-layer">
+      <img id="slot0">
+      <img id="slot1">
+      <img id="slot2">
+      <img id="slot3">
+    </div>
+    <img id="template" src="template.png" alt="Template">
     <div id="controls">
-      <button id="capture">拍照</button>
-      <button id="download" disabled>下載</button>
+      <button id="capture">📸 拍照</button>
+      <button id="download" disabled>⬇️ 下載</button>
     </div>
   </div>
-
   <canvas id="canvas" width="1080" height="1920" style="display:none;"></canvas>
-
   <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
@@ -98,64 +96,60 @@
       document.getElementById('slot2'),
       document.getElementById('slot3')
     ];
-    let capturedImages = [];
+    let images = [];
 
-    // 嘗試使用後鏡頭
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: 'environment' }, width: 1080, height: 1920 } })
-      .then(stream => {
-        video.srcObject = stream;
-      })
-      .catch(() => {
-        // fallback to default
-        navigator.mediaDevices.getUserMedia({ video: true })
-          .then(stream => video.srcObject = stream);
-      });
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { exact: 'environment' }, width: 1080, height: 1920 }
+    }).then(stream => {
+      video.srcObject = stream;
+    }).catch(() => {
+      // fallback if environment camera not found
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => video.srcObject = stream);
+    });
 
     captureBtn.onclick = () => {
-      if (capturedImages.length >= 4) return;
-
+      if (images.length >= 4) return;
       ctx.drawImage(video, 0, 0, 1080, 1920);
-      const imageData = canvas.toDataURL('image/png');
-      capturedImages.push(imageData);
-      slots[capturedImages.length - 1].src = imageData;
-
-      if (capturedImages.length === 4) {
+      const data = canvas.toDataURL('image/png');
+      images.push(data);
+      slots[images.length - 1].src = data;
+      if (images.length === 4) {
         downloadBtn.disabled = false;
       }
     };
 
     downloadBtn.onclick = () => {
-      const finalCanvas = document.createElement('canvas');
-      finalCanvas.width = 1080;
-      finalCanvas.height = 1920;
-      const fctx = finalCanvas.getContext('2d');
+      const output = document.createElement('canvas');
+      output.width = 1080;
+      output.height = 1920;
+      const octx = output.getContext('2d');
 
-      const drawImages = async () => {
-        for (let i = 0; i < 4; i++) {
-          const img = new Image();
-          img.src = capturedImages[i];
-          await new Promise(resolve => {
-            img.onload = () => {
-              const y = 0.07 * 1920 + i * 0.22 * 1920;
-              fctx.drawImage(img, 0.13 * 1080, y, 0.74 * 1080, 0.18 * 1920);
-              resolve();
-            };
-          });
-        }
+      const loadAndDraw = (src, x, y, w, h) => new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          octx.drawImage(img, x, y, w, h);
+          resolve();
+        };
+        img.src = src;
+      });
 
+      Promise.all([
+        loadAndDraw(images[0], 0.13*1080, 0.07*1920, 0.74*1080, 0.18*1920),
+        loadAndDraw(images[1], 0.13*1080, 0.29*1920, 0.74*1080, 0.18*1920),
+        loadAndDraw(images[2], 0.13*1080, 0.51*1920, 0.74*1080, 0.18*1920),
+        loadAndDraw(images[3], 0.13*1080, 0.73*1920, 0.74*1080, 0.18*1920),
+      ]).then(() => {
         const overlay = new Image();
-        overlay.src = 'template.png';
         overlay.onload = () => {
-          fctx.drawImage(overlay, 0, 0, 1080, 1920);
-          const result = finalCanvas.toDataURL('image/png');
+          octx.drawImage(overlay, 0, 0, 1080, 1920);
           const link = document.createElement('a');
-          link.href = result;
-          link.download = '你家的味道.png';
+          link.href = output.toDataURL('image/png');
+          link.download = 'result.png';
           link.click();
         };
-      };
-
-      drawImages();
+        overlay.src = 'template.png';
+      });
     };
   </script>
 </body>
