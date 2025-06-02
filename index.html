@@ -5,54 +5,74 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>拍四張相片合成模板</title>
   <style>
-    body {
+    html, body {
       margin: 0;
-      overflow: hidden;
+      padding: 0;
       background: black;
       font-family: sans-serif;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
-    #videoWrapper {
+    #container {
       position: relative;
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
+      width: 1080px;
+      height: 1920px;
+      background: black;
     }
     #video, #template {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      width: 1080px;
+      height: 1920px;
       object-fit: cover;
     }
+    .photo-slot {
+      position: absolute;
+      width: 800px;
+      height: 400px;
+      left: 140px;
+      background: transparent;
+      object-fit: cover;
+    }
+    #slot0 { top: 140px; }
+    #slot1 { top: 540px; }
+    #slot2 { top: 940px; }
+    #slot3 { top: 1340px; }
+
     #controls {
-      position: fixed;
-      bottom: 20px;
+      position: absolute;
+      bottom: 30px;
       width: 100%;
       text-align: center;
       z-index: 10;
     }
     button {
-      font-size: 1.2rem;
-      padding: 10px 20px;
+      font-size: 1.4rem;
+      padding: 12px 24px;
       margin: 0 10px;
       background-color: #fff;
       border: none;
-      border-radius: 8px;
+      border-radius: 10px;
       cursor: pointer;
     }
   </style>
 </head>
 <body>
-  <div id="videoWrapper">
+  <div id="container">
     <video id="video" autoplay playsinline muted></video>
     <img id="template" src="template.png" alt="Template Overlay" />
+    <img id="slot0" class="photo-slot" />
+    <img id="slot1" class="photo-slot" />
+    <img id="slot2" class="photo-slot" />
+    <img id="slot3" class="photo-slot" />
+    <div id="controls">
+      <button id="capture">拍照</button>
+      <button id="download" disabled>下載</button>
+    </div>
   </div>
-  <div id="controls">
-    <button id="capture">拍照</button>
-    <button id="download" disabled>下載</button>
-  </div>
-  <canvas id="canvas" style="display:none;"></canvas>
+
+  <canvas id="canvas" width="1080" height="1920" style="display:none;"></canvas>
 
   <script>
     const video = document.getElementById('video');
@@ -60,17 +80,21 @@
     const ctx = canvas.getContext('2d');
     const captureBtn = document.getElementById('capture');
     const downloadBtn = document.getElementById('download');
-    const template = document.getElementById('template');
-
+    const slots = [
+      document.getElementById('slot0'),
+      document.getElementById('slot1'),
+      document.getElementById('slot2'),
+      document.getElementById('slot3')
+    ];
     let capturedImages = [];
 
-    // 啟用後置相機
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: 'environment' } } })
+    // 啟用後鏡頭
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: 'environment' }, width: 1080, height: 1920 } })
       .then(stream => {
         video.srcObject = stream;
       })
       .catch(err => {
-        alert("無法存取後鏡頭，將改用預設鏡頭。" + err);
+        alert("無法使用後鏡頭，改用預設鏡頭。\n" + err);
         return navigator.mediaDevices.getUserMedia({ video: true });
       })
       .then(stream => {
@@ -78,55 +102,48 @@
       });
 
     captureBtn.onclick = () => {
-      const w = video.videoWidth;
-      const h = video.videoHeight;
-      canvas.width = w;
-      canvas.height = h;
-      ctx.drawImage(video, 0, 0, w, h);
-      capturedImages.push(canvas.toDataURL('image/png'));
+      if (capturedImages.length >= 4) return;
+
+      ctx.drawImage(video, 0, 0, 1080, 1920);
+      const imageData = canvas.toDataURL('image/png');
+      capturedImages.push(imageData);
+      slots[capturedImages.length - 1].src = imageData;
 
       if (capturedImages.length === 4) {
-        mergeImages();
+        downloadBtn.disabled = false;
       }
     };
 
-    function mergeImages() {
+    downloadBtn.onclick = () => {
       const finalCanvas = document.createElement('canvas');
-      const w = video.videoWidth;
-      const h = video.videoHeight;
-      finalCanvas.width = w;
-      finalCanvas.height = h;
+      finalCanvas.width = 1080;
+      finalCanvas.height = 1920;
       const fctx = finalCanvas.getContext('2d');
 
-      Promise.all(capturedImages.map(src => {
-        return new Promise(resolve => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.src = src;
-        });
-      })).then(images => {
-        const halfW = w / 2;
-        const halfH = h / 2;
-        fctx.drawImage(images[0], 0, 0, halfW, halfH);
-        fctx.drawImage(images[1], halfW, 0, halfW, halfH);
-        fctx.drawImage(images[2], 0, halfH, halfW, halfH);
-        fctx.drawImage(images[3], halfW, halfH, halfW, halfH);
+      // 填入照片到指定位置
+      capturedImages.forEach((src, index) => {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => {
+          const y = 140 + index * 400;
+          fctx.drawImage(img, 140, y, 800, 400);
 
-        const overlay = new Image();
-        overlay.onload = () => {
-          fctx.drawImage(overlay, 0, 0, w, h);
-          const result = finalCanvas.toDataURL('image/png');
-          downloadBtn.disabled = false;
-          downloadBtn.onclick = () => {
-            const link = document.createElement('a');
-            link.href = result;
-            link.download = 'result.png';
-            link.click();
-          };
+          // 當最後一張也完成時再畫 template
+          if (index === 3) {
+            const overlay = new Image();
+            overlay.src = 'template.png';
+            overlay.onload = () => {
+              fctx.drawImage(overlay, 0, 0, 1080, 1920);
+              const result = finalCanvas.toDataURL('image/png');
+              const link = document.createElement('a');
+              link.href = result;
+              link.download = 'result.png';
+              link.click();
+            };
+          }
         };
-        overlay.src = 'template.png';
       });
-    }
+    };
   </script>
 </body>
 </html>
